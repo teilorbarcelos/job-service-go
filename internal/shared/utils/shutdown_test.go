@@ -2,6 +2,8 @@ package utils
 
 import (
 	"context"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -37,4 +39,17 @@ func TestWaitForShutdown_StopsOnSignal(t *testing.T) {
 	defer cancel()
 	cancel()
 	assert.Error(t, ctx.Err())
+}
+
+func TestWaitForShutdown_RealSignal(t *testing.T) {
+	ctx, cancel := WaitForShutdown(context.Background(), NewLogger("info", "ci"))
+	defer cancel()
+	// Send SIGINT to self — signal.Notify will receive it
+	proc, err := os.FindProcess(os.Getpid())
+	require.NoError(t, err)
+	require.NoError(t, proc.Signal(syscall.SIGINT))
+
+	require.Eventually(t, func() bool {
+		return ctx.Err() != nil
+	}, time.Second, 10*time.Millisecond, "context should be cancelled after signal")
 }

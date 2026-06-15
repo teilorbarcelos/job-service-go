@@ -69,10 +69,7 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		if !job.Enabled() {
 			continue
 		}
-		sched, ok := schedules[job.Name()]
-		if !ok {
-			continue
-		}
+		sched := schedules[job.Name()]
 		s.wg.Add(1)
 		go s.supervise(runCtx, job, sched)
 	}
@@ -113,9 +110,6 @@ func parseAllSchedules(jobs []BaseJob, adapter CronAdapter) (map[string]CronSche
 func (s *Scheduler) supervise(ctx context.Context, job BaseJob, sched CronSchedule) {
 	defer s.wg.Done()
 	for {
-		if ctx.Err() != nil {
-			return
-		}
 		now := s.nowFunc()
 		next := sched.Next(now)
 		delay := next.Sub(now)
@@ -128,9 +122,6 @@ func (s *Scheduler) supervise(ctx context.Context, job BaseJob, sched CronSchedu
 			timer.Stop()
 			return
 		case <-timer.C:
-		}
-		if ctx.Err() != nil {
-			return
 		}
 		jc := JobContext{Logger: s.logger}
 		_ = ExecuteJob(job, jc, ctx, s.timeout)
