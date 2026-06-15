@@ -63,6 +63,26 @@ func TestGetEnvBool_Truthy(t *testing.T) {
 	assert.True(t, getEnvBool("X", false))
 }
 
+func TestGetEnvBool_AllVariants(t *testing.T) {
+	cases := []struct {
+		raw      string
+		expected bool
+	}{
+		{"true", true},
+		{"True", true},
+		{"1", true},
+		{"false", false},
+		{"False", false},
+		{"0", false},
+	}
+	for _, c := range cases {
+		t.Run(c.raw, func(t *testing.T) {
+			t.Setenv("X", c.raw)
+			assert.Equal(t, c.expected, getEnvBool("X", !c.expected))
+		})
+	}
+}
+
 func TestGetEnvInt_Invalid(t *testing.T) {
 	t.Setenv("X", "abc")
 	assert.Panics(t, func() { getEnvInt("X", 0) })

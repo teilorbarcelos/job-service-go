@@ -167,3 +167,45 @@ func TestScheduler_Stop_WithoutStart(t *testing.T) {
 	s := newScheduler(t, nil, &fakeSchedule{}, time.Second, nil)
 	assert.NoError(t, s.Stop(context.Background()))
 }
+
+func TestScheduler_Stop_TimeoutExceeds(t *testing.T) {
+	// Use a pre-cancelled context to force the Stop's ctx.Done() branch
+	job := &countingJob{name: "blocking", cron: "* * * * *", enabled: true, delay: 5 * time.Second}
+	sched := &fakeSchedule{}
+	sched.setNext(time.Now().Add(10 * time.Millisecond))
+	s := newScheduler(t, []BaseJob{job}, sched, time.Second, nil)
+	require.NoError(t, s.Start(context.Background()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+	err := s.Stop(ctx)
+	assert.Error(t, err)
+}
+
+func TestScheduler_Supervise_NegativeDelay(t *testing.T) {
+	// Cron returning a time in the past → negative delay → immediate run
+	job := newCountingJob("a", true)
+	sched := &fakeSchedule{}
+	sched.setNext(time.Now().Add(-time.Hour))
+	s := newScheduler(t, []BaseJob{job}, sched, time.Second, nil)
+	require.NoError(t, s.Start(context.Background()))
+	require.Eventually(t, func() bool {
+		return job.calls.Load() >= 1
+	}, time.Second, 10*time.Millisecond, "job should run with negative delay")
+	require.NoError(t, s.Stop(context.Background()))
+}
+
+func TestScheduler_JoinErrors(t *testing.T) {
+	// 0 items
+	assert.Equal(t, "", joinErrors(nil))
+	// 1 item
+	assert.Equal(t, "a", joinErrors([]string{"a"}))
+	// >1 items
+	assert.Equal(t, "a; b; c", joinErrors([]string{"a", "b", "c"}))
+}
+
+func TestScheduler_Stop_Twice(t *testing.T) {
+	s := newScheduler(t, nil, &fakeSchedule{}, time.Second, nil)
+	assert.NoError(t, s.Stop(context.Background()))
+	assert.NoError(t, s.Stop(context.Background())) // idempotent
+}

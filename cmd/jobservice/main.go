@@ -9,12 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"job-service-go/internal/app"
 	"job-service-go/internal/core"
 	"job-service-go/internal/infra/database"
-	"job-service-go/internal/infra/health"
 	"job-service-go/internal/infra/messaging"
 	redisinfra "job-service-go/internal/infra/redis"
-	"job-service-go/internal/jobs"
 	"job-service-go/internal/shared/config"
 	"job-service-go/internal/shared/utils"
 )
@@ -41,7 +40,6 @@ func main() {
 		logger.Error("postgres connection failed", "err", err.Error())
 		os.Exit(1)
 	}
-	defer db.Close()
 	logger.Info("postgres connected")
 
 	rdb, err := redisinfra.NewRedisProvider(bootCtx, redisinfra.Options{
@@ -56,7 +54,6 @@ func main() {
 		logger.Error("redis connection failed", "err", err.Error())
 		os.Exit(1)
 	}
-	defer rdb.Close()
 	logger.Info("redis connected")
 
 	var rb *messaging.RabbitProvider
@@ -75,36 +72,23 @@ func main() {
 			logger.Error("rabbit connection failed", "err", err.Error())
 			os.Exit(1)
 		}
-		defer rb.Close()
 		logger.Info("rabbit connected")
 	}
-
-	checker := health.NewDefaultHealthChecker(db, rdb, rb, settings)
-	jobsList := jobs.RegisterJobs(checker, settings)
-	logger.Info("jobs registered", "count", len(jobsList))
-
-	scheduler := core.NewScheduler(core.SchedulerOptions{
-		Jobs:        jobsList,
-		CronAdapter: core.NewRobfigAdapter(),
-		Timeout:     settings.JobExecutionTimeout,
-		Logger:      logger,
-	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	if err := scheduler.Start(ctx); err != nil {
-		logger.Error("scheduler start failed", "err", err.Error())
+	cfg := app.Config{
+		Settings:    settings,
+		Logger:      logger,
+		DB:          db,
+		Redis:       rdb,
+		Rabbit:      rb,
+		CronAdapter: core.NewRobfigAdapter(),
+		ShutdownCh:  ctx.Done(),
+	}
+	if err := app.Run(cfg); err != nil {
+		logger.Error("app run failed", "err", err.Error())
 		os.Exit(1)
 	}
-
-	<-ctx.Done()
-	logger.Info("shutdown signal received, draining...")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), settings.ShutdownTimeout)
-	defer cancel()
-	if err := scheduler.Stop(shutdownCtx); err != nil {
-		logger.Warn("scheduler stop exceeded timeout", "err", err.Error())
-	}
-	logger.Info("job service stopped")
 }

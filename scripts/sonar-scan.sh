@@ -10,8 +10,9 @@ export LANG=C.UTF-8 LC_ALL=C.UTF-8
   -Dsonar.projectKey="$PROJECT_KEY" \
   -Dsonar.projectName="$PROJECT_NAME" \
   -Dsonar.sources=cmd,internal \
-  -Dsonar.tests=. \
-  -Dsonar.exclusions="**/*_test.go,**/vendor/**" \
+  -Dsonar.tests=internal \
+  -Dsonar.test.inclusions="**/*_test.go" \
+  -Dsonar.exclusions="**/*_test.go,**/vendor/**,**/main.go" \
   -Dsonar.go.coverage.reportPaths=coverage.out \
   -Dsonar.host.url="$SONAR_HOST" \
   -Dsonar.login="$SONAR_TOKEN"

@@ -33,3 +33,22 @@ func TestNewLogger_NoEnvironment(t *testing.T) {
 	assert.NotNil(t, l)
 	assert.True(t, strings.ContainsAny("ok", "ok"))
 }
+
+func TestNewLogger_AllLevels(t *testing.T) {
+	for _, lvl := range []string{"debug", "info", "information", "warn", "warning", "error", "unknown"} {
+		l := NewLogger(lvl, "ci")
+		assert.NotNil(t, l)
+	}
+}
+
+func TestNewLogger_WarnEnabled(t *testing.T) {
+	l := NewLogger("warn", "")
+	assert.True(t, l.Enabled(nil, slog.LevelWarn))
+	assert.False(t, l.Enabled(nil, slog.LevelDebug))
+}
+
+func TestNewLogger_ErrorEnabled(t *testing.T) {
+	l := NewLogger("error", "")
+	assert.True(t, l.Enabled(nil, slog.LevelError))
+	assert.False(t, l.Enabled(nil, slog.LevelWarn))
+}
