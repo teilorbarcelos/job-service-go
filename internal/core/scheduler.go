@@ -55,29 +55,12 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	}
 	s.started = true
 
-	names := make(map[string]struct{})
-	for _, job := range s.jobs {
-		if _, dup := names[job.Name()]; dup {
-			return fmt.Errorf("duplicate job name: %s", job.Name())
-		}
-		names[job.Name()] = struct{}{}
+	if err := checkDuplicateNames(s.jobs); err != nil {
+		return err
 	}
-
-	schedules := make(map[string]CronSchedule, len(s.jobs))
-	var errs []string
-	for _, job := range s.jobs {
-		if !job.Enabled() {
-			continue
-		}
-		sched, err := s.cronAdapter.Parse(job.Schedule())
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %s", job.Name(), err.Error()))
-			continue
-		}
-		schedules[job.Name()] = sched
-	}
-	if len(errs) > 0 {
-		return fmt.Errorf("invalid cron expressions: %s", joinErrors(errs))
+	schedules, err := parseAllSchedules(s.jobs, s.cronAdapter)
+	if err != nil {
+		return err
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -94,6 +77,37 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		go s.supervise(runCtx, job, sched)
 	}
 	return nil
+}
+
+func checkDuplicateNames(jobs []BaseJob) error {
+	names := make(map[string]struct{})
+	for _, job := range jobs {
+		if _, dup := names[job.Name()]; dup {
+			return fmt.Errorf("duplicate job name: %s", job.Name())
+		}
+		names[job.Name()] = struct{}{}
+	}
+	return nil
+}
+
+func parseAllSchedules(jobs []BaseJob, adapter CronAdapter) (map[string]CronSchedule, error) {
+	schedules := make(map[string]CronSchedule, len(jobs))
+	var errs []string
+	for _, job := range jobs {
+		if !job.Enabled() {
+			continue
+		}
+		sched, err := adapter.Parse(job.Schedule())
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %s", job.Name(), err.Error()))
+			continue
+		}
+		schedules[job.Name()] = sched
+	}
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("invalid cron expressions: %s", joinErrors(errs))
+	}
+	return schedules, nil
 }
 
 func (s *Scheduler) supervise(ctx context.Context, job BaseJob, sched CronSchedule) {
