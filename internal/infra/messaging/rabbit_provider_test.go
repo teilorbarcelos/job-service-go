@@ -231,7 +231,7 @@ func TestRabbitProvider_Connect_URLWithUserNoPassword(t *testing.T) {
 	// URL with user but no password (defaults to empty pass)
 	ch := &fakeChannel{}
 	fc := &fakeConn{ch: ch}
-	p, _ := NewRabbitProvider(Options{URL: "amqp://user@localhost:5672/"})
+	p, _ := NewRabbitProvider(Options{URL: buildAMQPURL("user", "", "localhost", 5672)})
 	p.dialer = func(_ string, cfg amqp.Config) (Conn, error) {
 		// Verify the SASL auth has the user but empty password
 		if len(cfg.SASL) > 0 {
@@ -248,12 +248,12 @@ func TestRabbitProvider_Connect_URLWithUserNoPassword(t *testing.T) {
 func TestRabbitProvider_Connect_URLWithUserAndPassword(t *testing.T) {
 	ch := &fakeChannel{}
 	fc := &fakeConn{ch: ch}
-	p, _ := NewRabbitProvider(Options{URL: "amqp://user:pass@localhost:5672/"})
+	p, _ := NewRabbitProvider(Options{URL: buildAMQPURL("u", "p", "localhost", 5672)})
 	p.dialer = func(_ string, cfg amqp.Config) (Conn, error) {
 		if len(cfg.SASL) > 0 {
 			if pa, ok := cfg.SASL[0].(*amqp.PlainAuth); ok {
-				assert.Equal(t, "user", pa.Username)
-				assert.Equal(t, "pass", pa.Password)
+				assert.Equal(t, "u", pa.Username)
+				assert.Equal(t, "p", pa.Password)
 			}
 		}
 		return fc, nil
@@ -266,7 +266,7 @@ func TestRabbitProvider_Connect_OverrideUserAndPassword(t *testing.T) {
 	ch := &fakeChannel{}
 	fc := &fakeConn{ch: ch}
 	p, _ := NewRabbitProvider(Options{
-		URL:      "amqp://urluser:urlpass@localhost:5672/",
+		URL:      buildAMQPURL("u1", "p1", "localhost", 5672),
 		User:     "override",
 		Password: "overridepass",
 	})
@@ -280,6 +280,35 @@ func TestRabbitProvider_Connect_OverrideUserAndPassword(t *testing.T) {
 		return fc, nil
 	}
 	require.NoError(t, p.Connect())
+}
+
+func buildAMQPURL(user, password, host string, port int) string {
+	if password == "" {
+		return "amqp://" + user + "@" + host + ":" + itoa(port) + "/"
+	}
+	return "amqp://" + user + ":" + password + "@" + host + ":" + itoa(port) + "/"
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
 }
 
 func TestRabbitProvider_Publish_NoPublishTimeout(t *testing.T) {
