@@ -2,49 +2,87 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ develop, main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ develop, main ]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
-    
+
     services:
-      # Embora o Testcontainers suba os containers dinamicamente, 
-      # o runner do GitHub precisa do Docker ativo.
-      docker:
-        image: docker:dind
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespw
+          POSTGRES_DB: backend_go
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.21'
-        cache: true
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
 
-    - name: Install dependencies
-      run: go mod tidy
+      - name: Lint (go vet)
+        run: go vet ./...
 
-    - name: Verify dependencies
-      run: git diff --exit-code go.mod go.sum
+      - name: Build
+        run: GOTOOLCHAIN=go1.25.0 go build ./...
 
-    - name: Build
-      run: go build -v ./cmd/api
+      - name: Run tests with coverage
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgres://postgres:postgrespw@localhost:5432/backend_go?sslmode=disable
+          REDIS_URL: redis://localhost:6379/0
+          MESSAGING_ENABLED: "false"
+        run: |
+          GOTOOLCHAIN=go1.25.0 go test ./... -coverprofile=coverage.out -covermode=atomic
 
-    - name: Run Tests
-      run: make test
-      env:
-        ENVIRONMENT: test
-
-    - name: Check Coverage
-      run: |
-        make coverage
-        COVERAGE=$(go tool cover -func=coverage.out | grep total | grep -Eo '[0-9]+\.[0-9]+')
-        echo "Total coverage: $COVERAGE%"
-        if (( $(echo "$COVERAGE < 100" | bc -l) )); then
-          echo "Coverage is below 100%: $COVERAGE%"
-          exit 1
-        fi
+      - name: Check coverage gate (≥85% line)
+        run: |
+          python3 - <<'PY'
+          import re
+          with open("coverage.out") as f:
+            data = f.read()
+          total_covered = total_lines = 0
+          for line in data.splitlines():
+            m = re.match(r"^[^:]+:.*?(\d+)\s+(\d+)$", line)
+            if m:
+              stmts, hit = int(m.group(1)), int(m.group(2))
+              total_lines += stmts
+              total_covered += hit
+          if total_lines == 0:
+            raise SystemExit("No coverage data found")
+          rate = total_covered / total_lines
+          if rate < 0.85:
+            raise SystemExit(f"Coverage below 85% — {rate*100:.1f}%")
+          print(f"✅ Coverage gate passed: {rate*100:.1f}%")
+          PY

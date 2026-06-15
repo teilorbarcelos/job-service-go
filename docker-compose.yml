@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: job-service-go
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=Information
+      - DATABASE_URL=postgres://postgres:${DATABASE_PASSWORD}@host.docker.internal:5432/backend_go?sslmode=disable
+      - REDIS_URL=redis://host.docker.internal:6379/0
+      - MESSAGING_ENABLED=false
+      - RABBIT_URL=amqp://guest:guest@host.docker.internal:5672/
+      - HEALTH_CHECK_CRON=*/1 * * * *
+      - HEALTH_CHECK_ENABLED=true
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

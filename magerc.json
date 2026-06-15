@@ -1,0 +1,16 @@
+{
+  "name": "job-service-go",
+  "version": "0.1.0",
+  "description": "Scheduled job runner skeleton (Go 1.25)",
+  "scripts": {
+    "dev": "GOTOOLCHAIN=go1.25.0 go run ./cmd/jobservice",
+    "build": "GOTOOLCHAIN=go1.25.0 CGO_ENABLED=0 go build -ldflags=\"-s -w\" -o bin/jobservice ./cmd/jobservice",
+    "test": "GOTOOLCHAIN=go1.25.0 go test ./... -count=1",
+    "coverage": "GOTOOLCHAIN=go1.25.0 go test ./... -coverprofile=coverage.out -covermode=atomic",
+    "lint": "go vet ./...",
+    "check": "make check",
+    "sonar": "./scripts/sonar-scan.sh job-service-go job-service-go",
+    "infra-up": "docker compose -f docker-compose.infra.yml up -d",
+    "infra-down": "docker compose -f docker-compose.infra.yml down"
+  }
+}
