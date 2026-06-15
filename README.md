@@ -179,4 +179,4 @@ GitHub Actions roda em push/PR para `develop` e `main`:
 
 ## License
 
-Same as the parent `mage-boilerplates` repository.
+This is an open-source boilerplate. Use freely.
