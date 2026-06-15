@@ -20,9 +20,13 @@ type HealthCheckJob struct {
 }
 
 func NewHealthCheckJob(checker health.IHealthChecker, settings *config.AppSettings) *HealthCheckJob {
+	cron := settings.HealthCheckCron
+	if cron == "" {
+		cron = "*/1 * * * *"
+	}
 	return &HealthCheckJob{
 		checker: checker,
-		cron:    settings.HealthCheckCron,
+		cron:    cron,
 		enabled: settings.HealthCheckEnabled,
 	}
 }

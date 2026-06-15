@@ -11,14 +11,30 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// Conn represents an AMQP connection's surface area used by the provider.
+// Tests can implement this with a fake to cover the success paths
+// without a real RabbitMQ.
+type Conn interface {
+	Channel() (Channel, error)
+	Close() error
+	IsClosed() bool
+}
+
+type Channel interface {
+	PublishWithContext(ctx context.Context, exchange, routingKey string, mandatory, immediate bool, msg amqp.Publishing) error
+	Close() error
+	IsClosed() bool
+}
+
 type RabbitProvider struct {
-	mu            sync.Mutex
-	conn          *amqp.Connection
-	ch            *amqp.Channel
-	url           string
-	user          string
-	password      string
+	mu             sync.Mutex
+	conn           Conn
+	ch             Channel
+	url            string
+	user           string
+	password       string
 	publishTimeout time.Duration
+	dialer         func(url string, cfg amqp.Config) (Conn, error)
 }
 
 type Options struct {
@@ -37,8 +53,39 @@ func NewRabbitProvider(opts Options) (*RabbitProvider, error) {
 		user:           opts.User,
 		password:       opts.Password,
 		publishTimeout: opts.PublishTimeout,
+		dialer:         defaultDialer,
 	}, nil
 }
+
+func defaultDialer(u string, cfg amqp.Config) (Conn, error) {
+	c, err := amqp.DialConfig(u, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &amqpConn{Connection: c}, nil
+}
+
+type amqpConn struct{ *amqp.Connection }
+
+func (a *amqpConn) Channel() (Channel, error) {
+	ch, err := a.Connection.Channel()
+	if err != nil {
+		return nil, err
+	}
+	return &amqpChannel{Channel: ch}, nil
+}
+
+func (a *amqpConn) Close() error { return a.Connection.Close() }
+func (a *amqpConn) IsClosed() bool { return a.Connection.IsClosed() }
+
+type amqpChannel struct{ *amqp.Channel }
+
+func (a *amqpChannel) PublishWithContext(ctx context.Context, exchange, routingKey string, mandatory, immediate bool, msg amqp.Publishing) error {
+	return a.Channel.PublishWithContext(ctx, exchange, routingKey, mandatory, immediate, msg)
+}
+
+func (a *amqpChannel) Close() error     { return a.Channel.Close() }
+func (a *amqpChannel) IsClosed() bool   { return a.Channel.IsClosed() }
 
 func (p *RabbitProvider) Connect() error {
 	p.mu.Lock()
@@ -65,7 +112,7 @@ func (p *RabbitProvider) Connect() error {
 		Locale:   "en_US",
 		SASL:     []amqp.Authentication{&amqp.PlainAuth{Username: user, Password: pass}},
 	}
-	conn, err := amqp.DialConfig(p.url, cfg)
+	conn, err := p.dialer(p.url, cfg)
 	if err != nil {
 		return err
 	}

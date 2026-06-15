@@ -55,10 +55,11 @@ func Load() (*AppSettings, error) {
 }
 
 func getEnv(key, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		return v
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return fallback
 	}
-	return fallback
+	return v
 }
 
 func getEnvInt(key string, fallback int) int {

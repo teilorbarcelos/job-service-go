@@ -4,23 +4,28 @@ import (
 	"context"
 	"time"
 
-	"job-service-go/internal/infra/database"
-	"job-service-go/internal/infra/messaging"
-	redisinfra "job-service-go/internal/infra/redis"
 	"job-service-go/internal/shared/config"
 )
 
+type PgPinger interface {
+	Ping(ctx context.Context) error
+}
+
+type RabbitChecker interface {
+	IsOpen() bool
+}
+
 type DefaultHealthChecker struct {
-	db        *database.PgxProvider
-	redis     *redisinfra.RedisProvider
-	rabbit    *messaging.RabbitProvider
-	settings  *config.AppSettings
+	db       PgPinger
+	redis    PgPinger
+	rabbit   RabbitChecker
+	settings *config.AppSettings
 }
 
 func NewDefaultHealthChecker(
-	db *database.PgxProvider,
-	rd *redisinfra.RedisProvider,
-	rb *messaging.RabbitProvider,
+	db PgPinger,
+	rd PgPinger,
+	rb RabbitChecker,
 	settings *config.AppSettings,
 ) *DefaultHealthChecker {
 	return &DefaultHealthChecker{db: db, redis: rd, rabbit: rb, settings: settings}
