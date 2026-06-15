@@ -64,7 +64,9 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           MESSAGING_ENABLED: "false"
         run: |
-          GOTOOLCHAIN=go1.25.0 go test ./... -coverprofile=coverage.out -covermode=atomic
+          # -coverpkg restricts coverage to internal packages (excludes
+          # the cmd/jobservice entry point which can't be unit-tested).
+          GOTOOLCHAIN=go1.25.0 go test ./... -coverprofile=coverage.out -covermode=atomic -coverpkg=./internal/...
 
       - name: Check coverage gate (≥85% line, excluding cmd/jobservice)
         run: |
